@@ -77,7 +77,7 @@ export default function WithdrawalsPage() {
         ].map(s => (
           <div key={s.label} className="glass-panel rounded-2xl p-4" style={{ background: s.bg, border: `1px solid ${s.border}` }}>
             <p className="text-xs text-foreground/50 mb-1">{s.label}</p>
-            <p className="text-xl font-bold" style={{ color: s.color }}>{s.value}</p>
+            <p suppressHydrationWarning className="text-xl font-bold" style={{ color: s.color }}>{s.value}</p>
           </div>
         ))}
       </motion.div>
@@ -135,7 +135,7 @@ export default function WithdrawalsPage() {
                     </div>
                     <div className="px-3 border-l border-foreground/10 text-right">
                       <p className="text-[10px] text-foreground/40 mb-0.5">Amount</p>
-                      <p className="text-sm font-bold text-foreground">{formatIDR(Number(w.amount))}</p>
+                      <p suppressHydrationWarning className="text-sm font-bold text-foreground">{formatIDR(Number(w.amount))}</p>
                     </div>
 
                     <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium" style={{ background: st.bg, color: st.text }}>

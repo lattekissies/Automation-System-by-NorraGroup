@@ -72,7 +72,7 @@ export default function PromotionsPage() {
         ].map(s => (
           <div key={s.label} className="glass-panel rounded-2xl p-4" style={{ background: s.bg, border: `1px solid ${s.border}` }}>
             <p className="text-xs text-foreground/50 mb-1">{s.label}</p>
-            <p className="text-xl font-bold" style={{ color: s.color }}>{s.value}</p>
+            <p suppressHydrationWarning className="text-xl font-bold" style={{ color: s.color }}>{s.value}</p>
           </div>
         ))}
       </motion.div>
@@ -123,7 +123,7 @@ export default function PromotionsPage() {
                           <Eye className="w-3 h-3" /> {Number(s.views_claimed).toLocaleString()} views
                         </span>
                         {Number(s.reward_amount) > 0 && (
-                          <span className="text-xs font-semibold text-green-600">{formatIDR(Number(s.reward_amount))}</span>
+                          <span suppressHydrationWarning className="text-xs font-semibold text-green-600">{formatIDR(Number(s.reward_amount))}</span>
                         )}
                       </div>
                       <div className="flex gap-3 flex-wrap">

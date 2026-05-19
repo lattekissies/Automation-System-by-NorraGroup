@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabase";
+import { useStatsBaseline } from "@/lib/useStatsBaseline";
 import StatCard from "@/components/StatCard";
 import DataTable from "@/components/DataTable";
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import {
-  CreditCard, Users, Key, Activity, CheckCircle2,
-  XCircle, Bug, Zap, RefreshCw, ArrowRight, Mail, TrendingUp, DollarSign, Gift, Star
+  CreditCard, Users, Key,
+  Bug, Zap, RefreshCw, ArrowRight, Mail, TrendingUp, DollarSign, Gift, Star,
+  RotateCcw, AlertTriangle, X, CheckCircle2,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────────── */
@@ -53,7 +55,7 @@ function CustomTooltip({ active, payload, label }: any) {
         <div key={i} className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
           <span className="text-foreground/70 capitalize">{p.name}</span>
-          <span className="font-bold text-foreground ml-1">
+          <span suppressHydrationWarning className="font-bold text-foreground ml-1">
             {p.name === "revenue" ? formatIDR(p.value) : p.value}
           </span>
         </div>
@@ -91,13 +93,30 @@ function PipelineStep({ label, count, pct, color, icon: Icon, isLast }: any) {
 
 /* ─── Page ───────────────────────────────────────────────── */
 export default function Home() {
-  const [stats, setStats]         = useState<Stats | null>(null);
-  const [dailyRev, setDailyRev]   = useState<DailyRevenue[]>([]);
+  const [rawStats, setRawStats]     = useState<Stats | null>(null);
+  const [dailyRev, setDailyRev]     = useState<DailyRevenue[]>([]);
   const [userGrowth, setUserGrowth] = useState<UserGrowth[]>([]);
-  const [payments, setPayments]   = useState<LynkPayment[]>([]);
-  const [codes, setCodes]         = useState<ActivationCode[]>([]);
-  const [loading, setLoading]     = useState(true);
+  const [payments, setPayments]     = useState<LynkPayment[]>([]);
+  const [codes, setCodes]           = useState<ActivationCode[]>([]);
+  const [loading, setLoading]       = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const { baseline, saveBaseline, clearBaseline, applyBaseline } = useStatsBaseline();
+
+  // Displayed stats = raw minus baseline offset
+  const stats = rawStats ? applyBaseline(rawStats) : null;
+
+  const handleReset = () => {
+    if (!rawStats) return;
+    saveBaseline(rawStats);
+    setShowResetConfirm(false);
+  };
+
+  const handleClear = () => {
+    clearBaseline();
+    setShowClearConfirm(false);
+  };
 
   const fetchAll = async () => {
     setLoading(true);
@@ -134,7 +153,7 @@ export default function Home() {
       const rev7d = payRows.filter(p => new Date(p.created_at) >= sevenDaysAgo).reduce((s: number, p: any) => s + Number(p.grand_total), 0);
       const users7d = userRows.filter(u => new Date(u.created_at) >= sevenDaysAgo).length;
 
-      setStats({
+      setRawStats({
         total_codes:      allCodesRows.length,
         unused_codes:     allCodesRows.filter((c: any) => c.status === "unused").length,
         used_codes:       allCodesRows.filter((c: any) => c.status === "used").length,
@@ -153,9 +172,19 @@ export default function Home() {
         licensed_devices: devicesCount ?? 0,
       });
 
-      // Group daily revenue
+      // Read baseline reset date from localStorage (if any)
+      let baselineCutoff: Date | null = null;
+      try {
+        const stored = localStorage.getItem("norraagent_stats_baseline");
+        if (stored) baselineCutoff = new Date(JSON.parse(stored).reset_at);
+      } catch { /* ignore */ }
+
+      // Group daily revenue — only after reset point
+      const revPayRows = baselineCutoff
+        ? payRows.filter((r: any) => new Date(r.created_at) >= baselineCutoff!)
+        : payRows;
       const revMap: Record<string, { payments: number; revenue: number }> = {};
-      for (const r of payRows) {
+      for (const r of revPayRows) {
         const day = r.created_at.slice(0, 10);
         if (!revMap[day]) revMap[day] = { payments: 0, revenue: 0 };
         revMap[day].payments++;
@@ -171,8 +200,16 @@ export default function Home() {
       }
       setUserGrowth(Object.entries(growMap).map(([day, new_users]) => ({ day: day.slice(5), new_users })));
 
-      setPayments((payData ?? []) as LynkPayment[]);
-      setCodes((codeData ?? []) as ActivationCode[]);
+      // Recent Payments & Email Deliveries — filter by reset point
+      const filteredPayData = baselineCutoff
+        ? (payData ?? []).filter((p: any) => new Date(p.created_at) >= baselineCutoff!)
+        : (payData ?? []);
+      const filteredCodeData = baselineCutoff
+        ? (codeData ?? []).filter((c: any) => c.used_at && new Date(c.used_at) >= baselineCutoff!)
+        : (codeData ?? []);
+
+      setPayments(filteredPayData as LynkPayment[]);
+      setCodes(filteredCodeData as ActivationCode[]);
       setLastRefresh(new Date());
     } catch (e) {
       console.error("Dashboard fetch error:", e);
@@ -185,12 +222,12 @@ export default function Home() {
 
   const codeDonut = [
     { name: "Available", value: stats?.unused_codes ?? 0, color: "#10b981" },
-    { name: "Used",      value: stats?.used_codes   ?? 0, color: "#d18feb" },
+    { name: "Used",      value: stats?.used_codes   ?? 0, color: "#3b82f6" },
   ];
 
   const voucherDonut = [
-    { name: "Full Price", value: stats?.full_price_payments ?? 0, color: "#d18feb" },
-    { name: "With Voucher", value: stats?.voucher_payments ?? 0, color: "#a78bfa" },
+    { name: "Full Price", value: stats?.full_price_payments ?? 0, color: "#64748b" },
+    { name: "With Voucher", value: stats?.voucher_payments ?? 0, color: "#3b82f6" },
   ];
 
   const activationRate = stats && stats.total_users > 0
@@ -211,7 +248,7 @@ export default function Home() {
       header: "Product / Total", accessorKey: "grand_total",
       cell: (r: any) => (
         <div>
-          <p className="font-semibold text-foreground text-xs">{formatIDR(r.grand_total)}</p>
+          <p suppressHydrationWarning className="font-semibold text-foreground text-xs">{formatIDR(r.grand_total)}</p>
           <p className="text-[9px] text-foreground/30 truncate w-32" title={r.event || "Unknown"}>{r.event || "Unknown Product"}</p>
         </div>
       )
@@ -242,7 +279,7 @@ export default function Home() {
       header: "Delivered Code", accessorKey: "code",
       cell: (r: any) => (
         <code className="text-[10px] font-mono px-1.5 py-0.5 rounded-lg text-foreground/80 tracking-wider"
-          style={{ background: "rgba(209,143,235,0.1)", border: "1px solid rgba(209,143,235,0.2)" }}>
+          style={{ background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.2)" }}>
           {r.code}
         </code>
       ),
@@ -266,6 +303,156 @@ export default function Home() {
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto">
+
+      {/* ── Reset Confirm Modal ── */}
+      <AnimatePresence>
+        {showResetConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(15,23,42,0.5)", backdropFilter: "blur(6px)" }}
+            onClick={() => setShowResetConfirm(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0, y: 12 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.92, opacity: 0, y: 12 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl"
+              style={{ border: "1px solid rgba(15,23,42,0.08)" }}
+            >
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2.5 rounded-xl" style={{ background: "rgba(239,68,68,0.1)" }}>
+                  <AlertTriangle className="w-5 h-5 text-red-500" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-foreground text-sm">Reset Statistik</h3>
+                  <p className="text-xs text-foreground/40 mt-0.5">Aksi ini tidak menghapus data di database</p>
+                </div>
+                <button onClick={() => setShowResetConfirm(false)} className="ml-auto p-1 rounded-lg hover:bg-slate-100 transition-colors">
+                  <X className="w-4 h-4 text-foreground/40" />
+                </button>
+              </div>
+              <p className="text-sm text-foreground/60 leading-relaxed mb-5">
+                Semua angka statistik akan dihitung <strong>mulai dari sekarang</strong>. Data lama tetap aman di Supabase — hanya tampilan yang direset.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowResetConfirm(false)}
+                  className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-foreground/60 hover:bg-slate-50 border transition-colors"
+                  style={{ borderColor: "rgba(15,23,42,0.1)" }}
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleReset}
+                  className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shadow-lg shadow-red-500/20 transition-all hover:scale-105 active:scale-95"
+                  style={{ background: "linear-gradient(135deg, #f87171, #ef4444)" }}
+                >
+                  Ya, Reset Sekarang
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Clear Reset Confirm Modal ── */}
+      <AnimatePresence>
+        {showClearConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(15,23,42,0.5)", backdropFilter: "blur(6px)" }}
+            onClick={() => setShowClearConfirm(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0, y: 12 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.92, opacity: 0, y: 12 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl"
+              style={{ border: "1px solid rgba(15,23,42,0.08)" }}
+            >
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2.5 rounded-xl" style={{ background: "rgba(16,185,129,0.1)" }}>
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-foreground text-sm">Kembalikan ke Kumulatif</h3>
+                  <p className="text-xs text-foreground/40 mt-0.5">Tampilkan semua data historis</p>
+                </div>
+                <button onClick={() => setShowClearConfirm(false)} className="ml-auto p-1 rounded-lg hover:bg-slate-100 transition-colors">
+                  <X className="w-4 h-4 text-foreground/40" />
+                </button>
+              </div>
+              <p className="text-sm text-foreground/60 leading-relaxed mb-5">
+                Reset point akan dihapus dan statistik akan kembali menampilkan <strong>angka total sejak awal</strong>.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowClearConfirm(false)}
+                  className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-foreground/60 hover:bg-slate-50 border transition-colors"
+                  style={{ borderColor: "rgba(15,23,42,0.1)" }}
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleClear}
+                  className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:scale-105 active:scale-95"
+                  style={{ background: "linear-gradient(135deg, #34d399, #10b981)" }}
+                >
+                  Kembalikan
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Reset Mode Banner ── */}
+      <AnimatePresence>
+        {baseline && (
+          <motion.div
+            initial={{ opacity: 0, y: -12, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: "auto" }}
+            exit={{ opacity: 0, y: -12, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div
+              className="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm"
+              style={{
+                background: "rgba(239,68,68,0.06)",
+                border: "1px solid rgba(239,68,68,0.2)",
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="font-semibold text-red-600 text-xs">RESET MODE AKTIF</span>
+                <span className="text-foreground/40 text-xs">
+                  — Statistik dihitung dari{" "}
+                  <strong className="text-foreground/60">
+                    {new Date(baseline.reset_at).toLocaleString("id-ID", {
+                      day: "2-digit", month: "short", year: "numeric",
+                      hour: "2-digit", minute: "2-digit",
+                    })}
+                  </strong>
+                </span>
+              </div>
+              <button
+                onClick={() => setShowClearConfirm(true)}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1 rounded-lg text-emerald-700 hover:bg-emerald-50 transition-colors"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Kembali ke Kumulatif
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Refresh bar */}
       <motion.div {...fadeUp(0)} className="flex items-center justify-between">
         <div>
@@ -276,59 +463,69 @@ export default function Home() {
         </div>
         <div className="flex items-center gap-3">
             <span className="text-xs text-foreground/40">Sync: {lastRefresh.toLocaleTimeString("id-ID")}</span>
+            <button
+              onClick={() => setShowResetConfirm(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all hover:scale-105 active:scale-95"
+              style={{
+                background: baseline ? "rgba(239,68,68,0.1)" : "rgba(15,23,42,0.04)",
+                border: baseline ? "1px solid rgba(239,68,68,0.25)" : "1px solid rgba(15,23,42,0.08)",
+                color: baseline ? "#ef4444" : "rgba(15,23,42,0.5)",
+              }}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Reset Stats
+            </button>
             <button onClick={fetchAll}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white shadow-lg transition-all hover:scale-105 active:scale-95"
-            style={{ background: "linear-gradient(135deg, #d18feb, #a78bfa)" }}>
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white shadow-lg shadow-blue-500/20 transition-all hover:scale-105 active:scale-95"
+            style={{ background: "linear-gradient(135deg, #60a5fa, #3b82f6)" }}>
             <RefreshCw className="w-3.5 h-3.5" /> Sync Data
             </button>
         </div>
       </motion.div>
 
       {/* ── Key Performance Indicators ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Revenue" subtitle="All time payments"
-          value={formatIDR(stats?.total_revenue ?? 0)}
-          icon={DollarSign} trend={`+${formatIDR(stats?.revenue_last_7d ?? 0)} (7d)`} trendUp color="primary" delay={0.05} />
-        
-        <StatCard title="Average Order Value" subtitle="Total Rev / Payments"
-          value={formatIDR(stats?.avg_order_value ?? 0)}
-          icon={TrendingUp} color="accent" delay={0.1} />
-        
-        <StatCard title="Total Users" subtitle={`${stats?.activated_users} activated`}
-          value={(stats?.total_users ?? 0).toLocaleString()}
-          icon={Users} trend={`+${stats?.new_users_7d} (7d)`} trendUp color="success" delay={0.15} />
+      <div>
+        <h3 className="section-heading">Revenue & Growth</h3>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <StatCard title="Total Revenue" subtitle="All time payments"
+            value={formatIDR(stats?.total_revenue ?? 0)}
+            icon={DollarSign} trend={`+${formatIDR(stats?.revenue_last_7d ?? 0)} (7d)`} trendUp color="primary" delay={0.05} />
           
-        <StatCard title="Licensed Devices" subtitle="Hardware IDs"
-          value={(stats?.licensed_devices ?? 0).toLocaleString()}
-          icon={Zap} color="orange" delay={0.2} />
-      </div>
+          <StatCard title="Avg Order Value" subtitle="Total Rev / Payments"
+            value={formatIDR(stats?.avg_order_value ?? 0)}
+            icon={TrendingUp} color="accent" delay={0.1} />
+          
+          <StatCard title="Total Users" subtitle={`${stats?.activated_users} activated`}
+            value={(stats?.total_users ?? 0).toLocaleString()}
+            icon={Users} trend={`+${stats?.new_users_7d} (7d)`} trendUp color="success" delay={0.15} />
+            
+          <StatCard title="Licensed Devices" subtitle="Hardware IDs"
+            value={(stats?.licensed_devices ?? 0).toLocaleString()}
+            icon={Zap} color="orange" delay={0.2} />
+        </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-         <div className="col-span-2 lg:col-span-1">
-            <StatCard title="Codes Available" subtitle={`${stats?.used_codes ?? 0} used`}
+        <h3 className="section-heading">Operations & Support</h3>
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <StatCard title="Codes Available" subtitle={`${stats?.used_codes ?? 0} used`}
             value={(stats?.unused_codes ?? 0).toLocaleString()}
             icon={Key} color="pink" delay={0.25} />
-         </div>
-         <div className="col-span-2 lg:col-span-1">
-            <StatCard title="Discounts Given" subtitle="Total nominal"
+
+          <StatCard title="Discounts Given" subtitle="Total nominal"
             value={formatIDR(stats?.total_discount_given ?? 0)}
             icon={Gift} color="danger" delay={0.3} />
-         </div>
-         <div className="col-span-2 lg:col-span-1">
-            <StatCard title="Creator Program" subtitle="Total apps"
+
+          <StatCard title="Creator Program" subtitle="Total apps"
             value={(stats?.creator_apps ?? 0).toLocaleString()}
             icon={Star} color="accent" delay={0.35} />
-         </div>
-         <div className="col-span-2 lg:col-span-1">
-            <StatCard title="Bug Reports" subtitle="Open tickets"
+
+          <StatCard title="Bug Reports" subtitle="Open tickets"
             value={(stats?.bug_reports ?? 0).toLocaleString()}
             icon={Bug} color="danger" delay={0.4} />
-         </div>
-         <div className="col-span-2 lg:col-span-1">
-            <StatCard title="Voucher vs Full" subtitle="Payments ratio"
+
+          <StatCard title="Voucher vs Full" subtitle="Payments ratio"
             value={`${stats?.voucher_payments} / ${stats?.full_price_payments}`}
             icon={CreditCard} color="primary" delay={0.45} />
-         </div>
+        </div>
       </div>
 
       {/* ── Visual Analytics ── */}
@@ -344,26 +541,26 @@ export default function Home() {
               <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-accent inline-block" /> Payments (Count)</span>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={dailyRev} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <ResponsiveContainer width="100%" height={320}>
+            <AreaChart data={dailyRev} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="gRev" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#d18feb" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#d18feb" stopOpacity={0} />
+                  <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="gPay" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#a78bfa" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#a78bfa" stopOpacity={0} />
+                  <stop offset="5%"  stopColor="#94a3b8" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="#94a3b8" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(209,143,235,0.15)" vertical={false} />
-              <XAxis dataKey="day" tick={{ fill: "rgba(30,16,48,0.4)", fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis yAxisId="left" tick={{ fill: "rgba(30,16,48,0.35)", fontSize: 9 }} axisLine={false} tickLine={false} width={48}
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(15,23,42,0.04)" vertical={false} />
+              <XAxis dataKey="day" tick={{ fill: "rgba(15,23,42,0.4)", fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} dy={10} />
+              <YAxis yAxisId="left" tick={{ fill: "rgba(15,23,42,0.35)", fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} width={54}
                 tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
-              <YAxis yAxisId="right" orientation="right" tick={{ fill: "rgba(30,16,48,0.35)", fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
-              <Tooltip content={<CustomTooltip />} cursor={{ stroke: "rgba(209,143,235,0.3)", strokeWidth: 1 }} />
-              <Area yAxisId="left" type="monotone" dataKey="revenue"  stroke="#d18feb" strokeWidth={2} fill="url(#gRev)"  dot={false} activeDot={{ r: 4, fill: "#d18feb", stroke: "#fff", strokeWidth: 2 }} />
-              <Area yAxisId="right" type="monotone" dataKey="payments" stroke="#a78bfa" strokeWidth={2} fill="url(#gPay)" dot={false} activeDot={{ r: 4, fill: "#a78bfa", stroke: "#fff", strokeWidth: 2 }} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fill: "rgba(15,23,42,0.35)", fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} width={30} />
+              <Tooltip content={<CustomTooltip />} cursor={{ stroke: "rgba(59,130,246,0.15)", strokeWidth: 2, strokeDasharray: "4 4" }} />
+              <Area yAxisId="left" type="monotone" dataKey="revenue"  stroke="#3b82f6" strokeWidth={3} fill="url(#gRev)"  dot={false} activeDot={{ r: 5, fill: "#3b82f6", stroke: "#fff", strokeWidth: 2 }} />
+              <Area yAxisId="right" type="monotone" dataKey="payments" stroke="#94a3b8" strokeWidth={3} fill="url(#gPay)" dot={false} activeDot={{ r: 5, fill: "#94a3b8", stroke: "#fff", strokeWidth: 2 }} />
             </AreaChart>
           </ResponsiveContainer>
         </motion.div>
@@ -399,15 +596,15 @@ export default function Home() {
               </div>
           </div>
           
-          <div className="pt-4 mt-4" style={{ borderTop: "1px solid rgba(209,143,235,0.15)" }}>
+          <div className="pt-4 mt-4" style={{ borderTop: "1px solid rgba(15,23,42,0.06)" }}>
               <h3 className="font-semibold text-foreground mb-1 text-sm">Activation Funnel</h3>
-              <div className="mt-2 h-2 rounded-full overflow-hidden" style={{ background: "rgba(209,143,235,0.15)" }}>
+              <div className="mt-2 h-2 rounded-full overflow-hidden" style={{ background: "rgba(15,23,42,0.04)" }}>
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${activationRate}%` }}
                   transition={{ delay: 0.5, duration: 1, ease: "easeOut" }}
                   className="h-full rounded-full"
-                  style={{ background: "linear-gradient(90deg, #10b981, #d18feb)" }}
+                  style={{ background: "linear-gradient(90deg, #60a5fa, #3b82f6)" }}
                 />
               </div>
               <p className="text-[11px] text-foreground/40 mt-1.5 flex justify-between">
@@ -419,29 +616,37 @@ export default function Home() {
       </div>
 
       {/* ── Recent Activity Tables ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <motion.div {...fadeUp(0.6)} className="glass-panel rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="font-semibold text-foreground flex items-center gap-2 text-sm">
-                  <CreditCard className="w-4 h-4 text-primary" /> Recent Payments
-                </h3>
-              </div>
+      <div className="space-y-6">
+        <motion.div {...fadeUp(0.6)} className="glass-panel rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h3 className="font-semibold text-foreground flex items-center gap-2 text-base">
+                <div className="p-1.5 rounded-md bg-blue-50 text-blue-600">
+                  <CreditCard className="w-4 h-4" />
+                </div>
+                Recent Payments
+              </h3>
+              <p className="text-xs text-foreground/40 mt-1">10 transaksi terakhir yang masuk via Lynk.id</p>
             </div>
-            <DataTable columns={paymentColumns} data={payments} />
-          </motion.div>
+          </div>
+          <DataTable columns={paymentColumns} data={payments} />
+        </motion.div>
 
-          <motion.div {...fadeUp(0.65)} className="glass-panel rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="font-semibold text-foreground flex items-center gap-2 text-sm">
-                  <Mail className="w-4 h-4 text-success" /> Recent Email Deliveries
-                </h3>
-              </div>
+        <motion.div {...fadeUp(0.65)} className="glass-panel rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h3 className="font-semibold text-foreground flex items-center gap-2 text-base">
+                <div className="p-1.5 rounded-md bg-emerald-50 text-emerald-600">
+                  <Mail className="w-4 h-4" />
+                </div>
+                Recent Email Deliveries
+              </h3>
+              <p className="text-xs text-foreground/40 mt-1">10 pengiriman kode aktivasi via email terakhir</p>
             </div>
-            {/* Only show codes that have been sent (owner_email exists) */}
-            <DataTable columns={codeColumns} data={codes.filter(c => c.owner_email).slice(0, 10)} />
-          </motion.div>
+          </div>
+          {/* Only show codes that have been sent (owner_email exists) */}
+          <DataTable columns={codeColumns} data={codes.filter(c => c.owner_email).slice(0, 10)} />
+        </motion.div>
       </div>
     </div>
   );

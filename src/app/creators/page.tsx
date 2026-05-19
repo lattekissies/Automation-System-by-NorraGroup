@@ -70,7 +70,7 @@ export default function CreatorsPage() {
         ].map(s => (
           <div key={s.label} className="glass-panel rounded-2xl p-4" style={{ background: s.bg, border: `1px solid ${s.border}` }}>
             <p className="text-xs text-foreground/50 mb-1">{s.label}</p>
-            <p className="text-xl font-bold" style={{ color: s.color }}>{s.value}</p>
+            <p suppressHydrationWarning className="text-xl font-bold" style={{ color: s.color }}>{s.value}</p>
           </div>
         ))}
       </motion.div>
@@ -125,11 +125,11 @@ export default function CreatorsPage() {
                   <div className="flex items-center gap-3 flex-wrap">
                     <div className="text-right">
                       <p className="text-xs text-foreground/40">Balance</p>
-                      <p className="text-xs font-semibold text-foreground">{formatIDR(Number(c.balance))}</p>
+                      <p suppressHydrationWarning className="text-xs font-semibold text-foreground">{formatIDR(Number(c.balance))}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-xs text-foreground/40">Earned</p>
-                      <p className="text-xs font-semibold text-foreground">{formatIDR(Number(c.total_earned))}</p>
+                      <p suppressHydrationWarning className="text-xs font-semibold text-foreground">{formatIDR(Number(c.total_earned))}</p>
                     </div>
                     <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium" style={{ background: st.bg, color: st.text }}>
                       <Icon className="w-3 h-3" /> {st.label}

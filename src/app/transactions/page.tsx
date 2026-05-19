@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabase";
+import { STORAGE_KEY } from "@/lib/useStatsBaseline";
 import DataTable from "@/components/DataTable";
-import { ArrowLeftRight, RefreshCw, Trash2, AlertTriangle, X } from "lucide-react";
+import { ArrowLeftRight, RefreshCw, Trash2, AlertTriangle, X, CheckCircle2, CreditCard, DollarSign, Star, Gift } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell
@@ -50,6 +51,7 @@ export default function TransactionsPage() {
   const [dateFilter, setDateFilter] = useState<string>("");
   const [deleteTarget, setDeleteTarget] = useState<LynkPayment | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [baselineCutoff, setBaselineCutoff] = useState<Date | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -63,7 +65,19 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     setIsMounted(true);
+    // Load baseline reset point from localStorage
+    const loadBaseline = () => {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) setBaselineCutoff(new Date(JSON.parse(stored).reset_at));
+        else setBaselineCutoff(null);
+      } catch { /* ignore */ }
+    };
+    loadBaseline();
+    // React to baseline changes triggered from Overview page
+    window.addEventListener("storage", loadBaseline);
     fetchData();
+    return () => window.removeEventListener("storage", loadBaseline);
   }, []);
 
   if (!isMounted) return null;
@@ -90,10 +104,14 @@ export default function TransactionsPage() {
     return `${yyyy}-${mm}-${dd}`;
   };
 
-  // Apply date filter
-  const filteredPayments = dateFilter
-    ? payments.filter((p) => getLocalYYYYMMDD(p.created_at) === dateFilter)
+  // Apply baseline date filter first, then date picker filter
+  const baselineFiltered = baselineCutoff
+    ? payments.filter(p => new Date(p.created_at) >= baselineCutoff!)
     : payments;
+
+  const filteredPayments = dateFilter
+    ? baselineFiltered.filter((p) => getLocalYYYYMMDD(p.created_at) === dateFilter)
+    : baselineFiltered;
 
   // Build daily chart data
   const dailyMap: Record<string, { payments: number; revenue: number }> = {};
@@ -131,14 +149,14 @@ export default function TransactionsPage() {
     },
     {
       header: "Grand Total", accessorKey: "grand_total",
-      cell: (r: any) => <span className="font-bold text-foreground">{formatIDR(r.grand_total)}</span>,
+      cell: (r: any) => <span suppressHydrationWarning className="font-bold text-foreground">{formatIDR(r.grand_total)}</span>,
     },
     {
       header: "Price / Disc", accessorKey: "total_price",
       cell: (r: any) => (
         <div className="text-xs">
-          <p className="text-foreground/70">{formatIDR(r.total_price)}</p>
-          {r.discount > 0 && <p className="text-destructive">-{formatIDR(r.discount)}</p>}
+          <p suppressHydrationWarning className="text-foreground/70">{formatIDR(r.total_price)}</p>
+          {r.discount > 0 && <p suppressHydrationWarning className="text-destructive">-{formatIDR(r.discount)}</p>}
         </div>
       ),
     },
@@ -146,7 +164,7 @@ export default function TransactionsPage() {
       header: "Voucher", accessorKey: "voucher_code",
       cell: (r: any) => r.voucher_code
         ? <span className="text-xs font-mono px-2 py-1 rounded-lg text-foreground/80"
-            style={{ background: "rgba(209,143,235,0.1)", border: "1px solid rgba(209,143,235,0.22)" }}>
+            style={{ background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.2)" }}>
             {r.voucher_code}
           </span>
         : <span className="text-foreground/25 text-xs">—</span>,
@@ -156,21 +174,60 @@ export default function TransactionsPage() {
       cell: (r: any) => <span className="text-xs text-foreground/40">{fmtDate(r.created_at)}</span>,
     },
     {
-      header: "Action", accessorKey: "id",
+      header: "Action", accessorKey: "id", align: "center" as const,
       cell: (r: any) => (
-        <button 
-          onClick={() => setDeleteTarget(r)}
-          className="p-1.5 text-destructive/50 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
-          title="Hapus Transaksi"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex justify-center">
+          <button 
+            onClick={() => setDeleteTarget(r)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+            title="Hapus Transaksi"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete
+          </button>
+        </div>
       ),
     },
   ];
 
   return (
     <div className="space-y-6">
+
+      {/* ── Reset Mode Banner ── */}
+      <AnimatePresence>
+        {baselineCutoff && (
+          <motion.div
+            initial={{ opacity: 0, y: -10, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: "auto" }}
+            exit={{ opacity: 0, y: -10, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div
+              className="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm"
+              style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)" }}
+            >
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="font-semibold text-red-600 text-xs">RESET MODE AKTIF</span>
+                <span className="text-foreground/40 text-xs">
+                  — Data dihitung dari{" "}
+                  <strong className="text-foreground/60">
+                    {baselineCutoff.toLocaleString("id-ID", {
+                      day: "2-digit", month: "short", year: "numeric",
+                      hour: "2-digit", minute: "2-digit",
+                    })}
+                  </strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-foreground/40">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Reset dari halaman Overview</span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Delete Confirmation Modal ── */}
       <AnimatePresence>
         {deleteTarget && (
@@ -215,7 +272,7 @@ export default function TransactionsPage() {
               <div className="rounded-xl p-3 mb-5 space-y-1" style={{ background: "#f8fafc", border: "1px solid rgba(96,165,250,0.12)" }}>
                 <p className="text-xs font-medium text-foreground/80">{deleteTarget.customer_name || "Unknown"}</p>
                 <p className="text-[11px] text-foreground/40">{deleteTarget.customer_email}</p>
-                <p className="text-xs font-bold text-foreground mt-1.5">{formatIDR(deleteTarget.grand_total)}</p>
+                <p suppressHydrationWarning className="text-xs font-bold text-foreground mt-1.5">{formatIDR(deleteTarget.grand_total)}</p>
               </div>
 
               <div className="flex gap-2">
@@ -241,19 +298,24 @@ export default function TransactionsPage() {
         )}
       </AnimatePresence>
 
-      {/* Summary pills */}
-      <motion.div {...fadeUp(0.05)} className="flex flex-wrap gap-3">
+      {/* Summary Cards */}
+      <motion.div {...fadeUp(0.05)} className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Total Payments",  value: filteredPayments.length,          color: "#60a5fa", bg: "rgba(96,165,250,0.08)",  border: "rgba(96,165,250,0.2)" },
-          { label: "Total Revenue",   value: formatIDR(totalRevenue),  color: "#10b981", bg: "rgba(16,185,129,0.08)",  border: "rgba(16,185,129,0.2)"  },
-          { label: "With Voucher",    value: withVoucher.length,        color: "#0f172a", bg: "rgba(15,23,42,0.05)",   border: "rgba(15,23,42,0.1)"    },
-          { label: "Discount Given",  value: formatIDR(discountGiven), color: "#ef4444", bg: "rgba(239,68,68,0.07)",  border: "rgba(239,68,68,0.18)"  },
-        ].map(s => (
-          <div key={s.label} className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm"
-            style={{ background: s.bg, border: `1px solid ${s.border}` }}>
-            <span className="w-2 h-2 rounded-full" style={{ background: s.color }} />
-            <span className="text-foreground/60">{s.label}</span>
-            <span className="font-bold" style={{ color: s.color }}>{s.value}</span>
+          { label: "Total Payments",  value: filteredPayments.length,          icon: CreditCard, color: "#3b82f6", bg: "rgba(59,130,246,0.1)", strip: "stat-strip-primary" },
+          { label: "Total Revenue",   value: formatIDR(totalRevenue),  icon: DollarSign, color: "#10b981", bg: "rgba(16,185,129,0.1)", strip: "stat-strip-success" },
+          { label: "With Voucher",    value: withVoucher.length,        icon: Star, color: "#f59e0b", bg: "rgba(245,158,11,0.1)", strip: "stat-strip-warning" },
+          { label: "Discount Given",  value: formatIDR(discountGiven), icon: Gift, color: "#ef4444", bg: "rgba(239,68,68,0.1)", strip: "stat-strip-danger" },
+        ].map((s, i) => (
+          <div key={s.label} className={`glass-panel ${s.strip} rounded-xl p-4 flex flex-col justify-between bg-white`}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: s.bg }}>
+                <s.icon className="w-4 h-4" style={{ color: s.color }} />
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-foreground/40 mb-1">{s.label}</p>
+              <p suppressHydrationWarning className="text-xl font-extrabold text-foreground leading-none">{s.value}</p>
+            </div>
           </div>
         ))}
       </motion.div>
@@ -262,43 +324,51 @@ export default function TransactionsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <motion.div {...fadeUp(0.1)} className="lg:col-span-2 glass-panel rounded-2xl p-5">
           <h3 className="font-semibold text-foreground mb-1">Daily Revenue & Payments</h3>
-          <p className="text-xs text-foreground/40 mb-4">Semua transaksi Lynk.id berdasarkan hari</p>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={dailyData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <p className="text-xs text-foreground/40 mb-4">
+            {baselineCutoff
+              ? `Sejak ${baselineCutoff.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })} (reset point)`
+              : "Semua transaksi Lynk.id berdasarkan hari"}
+          </p>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={dailyData} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="tRevGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%"   stopColor="#60a5fa" stopOpacity={0.9} />
-                  <stop offset="100%" stopColor="#93c5fd" stopOpacity={0.4} />
+                  <stop offset="0%"   stopColor="#3b82f6" stopOpacity={0.9} />
+                  <stop offset="100%" stopColor="#60a5fa" stopOpacity={0.4} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="2 2" stroke="rgba(96,165,250,0.12)" vertical={false} />
-              <XAxis dataKey="day" tick={{ fill: "rgba(15,23,42,0.4)", fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "rgba(15,23,42,0.35)", fontSize: 9 }} axisLine={false} tickLine={false} width={48} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
-              <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(96,165,250,0.06)" }} />
-              <Bar dataKey="revenue" name="revenue" fill="url(#tRevGrad)" radius={[4, 4, 0, 0]} maxBarSize={28} />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(15,23,42,0.04)" vertical={false} />
+              <XAxis dataKey="day" tick={{ fill: "rgba(15,23,42,0.4)", fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} dy={10} />
+              <YAxis tick={{ fill: "rgba(15,23,42,0.35)", fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} width={54} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(59,130,246,0.06)" }} />
+              <Bar dataKey="revenue" name="revenue" fill="url(#tRevGrad)" radius={[4, 4, 0, 0]} maxBarSize={32} />
             </BarChart>
           </ResponsiveContainer>
         </motion.div>
 
-        <motion.div {...fadeUp(0.15)} className="glass-panel rounded-2xl p-5">
-          <h3 className="font-semibold text-foreground mb-1">Voucher vs Full Price</h3>
-          <p className="text-xs text-foreground/40 mb-3">Breakdown penggunaan voucher</p>
-          <ResponsiveContainer width="100%" height={130}>
-            <PieChart>
-              <Pie data={voucherData} cx="50%" cy="50%" innerRadius={36} outerRadius={54} dataKey="value" paddingAngle={4} strokeWidth={0}>
-                {voucherData.map((e, i) => <Cell key={i} fill={e.color} />)}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-          {voucherData.map(m => (
-            <div key={m.name} className="flex items-center justify-between text-xs mt-1.5">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full" style={{ background: m.color }} />
-                <span className="text-foreground/60">{m.name}</span>
+        <motion.div {...fadeUp(0.15)} className="glass-panel rounded-2xl p-5 flex flex-col justify-between">
+          <div>
+            <h3 className="font-semibold text-foreground mb-1">Voucher vs Full Price</h3>
+            <p className="text-xs text-foreground/40 mb-3">Breakdown penggunaan voucher</p>
+            <ResponsiveContainer width="100%" height={160}>
+              <PieChart>
+                <Pie data={voucherData} cx="50%" cy="50%" innerRadius={45} outerRadius={65} dataKey="value" paddingAngle={4} strokeWidth={0}>
+                  {voucherData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-2 space-y-2">
+            {voucherData.map(m => (
+              <div key={m.name} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full" style={{ background: m.color }} />
+                  <span className="text-foreground/60">{m.name}</span>
+                </div>
+                <span className="font-semibold text-foreground/80">{m.value}</span>
               </div>
-              <span className="font-semibold text-foreground/80">{m.value}</span>
-            </div>
-          ))}
+            ))}
+          </div>
         </motion.div>
       </div>
 
@@ -309,7 +379,9 @@ export default function TransactionsPage() {
             <h3 className="font-semibold text-foreground flex items-center gap-2">
               <ArrowLeftRight className="w-4 h-4 text-primary" /> All Transactions
             </h3>
-            <p className="text-xs text-foreground/40 mt-0.5">{filteredPayments.length} transaksi · {dateFilter ? `Tanggal ${dateFilter}` : "Semua waktu"}</p>
+            <p className="text-xs text-foreground/40 mt-0.5">
+              {filteredPayments.length} transaksi · {dateFilter ? `Tanggal ${dateFilter}` : baselineCutoff ? `Sejak reset point` : "Semua waktu"}
+            </p>
           </div>
           <div className="flex gap-2 items-center flex-wrap">
             <input
@@ -317,7 +389,7 @@ export default function TransactionsPage() {
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
               className="px-3 py-2 rounded-xl text-sm text-foreground bg-transparent outline-none transition-colors"
-              style={{ border: "1px solid rgba(96,165,250,0.3)" }}
+              style={{ border: "1px solid rgba(15,23,42,0.1)" }}
             />
             {dateFilter && (
               <button onClick={() => setDateFilter("")} className="text-xs text-foreground/50 hover:text-foreground">
@@ -325,7 +397,7 @@ export default function TransactionsPage() {
               </button>
             )}
             <button onClick={fetchData} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium text-foreground/60 hover:text-foreground transition-colors"
-              style={{ background: "rgba(96,165,250,0.07)", border: "1px solid rgba(96,165,250,0.2)" }}>
+              style={{ background: "rgba(15,23,42,0.03)", border: "1px solid rgba(15,23,42,0.06)" }}>
               <RefreshCw className="w-3.5 h-3.5" /> Refresh
             </button>
           </div>

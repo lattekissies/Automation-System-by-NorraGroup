@@ -133,7 +133,7 @@ export async function POST(req: Request) {
             
             <!-- Logo / Header -->
             <div style="text-align: center; margin-bottom: 30px;">
-              <h1 style="color: #d18feb; font-size: 28px; margin: 0; letter-spacing: -0.5px;">NorraClip Pro</h1>
+              <h1 style="color: #3b82f6; font-size: 28px; margin: 0; letter-spacing: -0.5px;">NorraClip Pro</h1>
               <p style="color: #64748b; font-size: 14px; margin-top: 5px;">Your AI-Powered Assistant</p>
             </div>
 
@@ -141,8 +141,8 @@ export async function POST(req: Request) {
             <p style="font-size: 16px; line-height: 1.5;">Terima kasih telah melakukan pembelian kode aktivasi NorraClip Pro. Berikut adalah kode eksklusif Anda:</p>
             
             <!-- Code Box -->
-            <div style="padding: 24px; background: #faf6ff; border: 1px solid rgba(209,143,235,0.3); border-radius: 12px; font-family: 'Courier New', Courier, monospace; font-size: 24px; font-weight: bold; letter-spacing: 4px; margin: 30px 0; text-align: center; color: #b56fd4; box-shadow: 0 4px 20px -8px rgba(209,143,235,0.15);">
-              ${codeData.code}
+            <div style="padding: 24px; background: #eff6ff; border: 1px solid rgba(59,130,246,0.3); border-radius: 12px; font-family: 'Courier New', Courier, monospace; font-size: 24px; font-weight: bold; letter-spacing: 4px; margin: 30px 0; text-align: center; color: #2563eb; box-shadow: 0 4px 20px -8px rgba(59,130,246,0.15);">
+              ${codeData.code.toUpperCase()}
             </div>
             
             <!-- Community & Support -->
@@ -151,15 +151,15 @@ export async function POST(req: Request) {
               Dapatkan update terbaru, tips penggunaan, dan bantuan langsung dari tim kami serta pengguna lain di grup resmi Telegram NorraClip:
             </p>
             <div style="text-align: center; margin: 25px 0;">
-              <a href="https://t.me/+gB3UC0TLNAc3ZjM1" style="background-color: #d18feb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; display: inline-block;">Masuk Grup Telegram</a>
+              <a href="https://t.me/+gB3UC0TLNAc3ZjM1" style="background-color: #3b82f6; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; display: inline-block;">Masuk Grup Telegram</a>
             </div>
 
             <p style="font-size: 15px; line-height: 1.6; color: #334155;">
-              Jika Anda mengalami kendala saat aktivasi, silakan hubungi kami di <a href="mailto:norragroup@norraclip.com" style="color: #d18feb; text-decoration: none; font-weight: 500;">norragroup@norraclip.com</a> atau cukup <strong>balas email ini</strong> agar kami dapat segera membantu Anda.
+              Jika Anda mengalami kendala saat aktivasi, silakan hubungi kami di <a href="mailto:norragroup@norraclip.com" style="color: #3b82f6; text-decoration: none; font-weight: 500;">norragroup@norraclip.com</a> atau cukup <strong>balas email ini</strong> agar kami dapat segera membantu Anda.
             </p>
 
             <!-- Affiliate -->
-            <div style="background-color: #f8fafc; border-left: 4px solid #a78bfa; padding: 16px 20px; margin: 30px 0; border-radius: 0 8px 8px 0;">
+            <div style="background-color: #f8fafc; border-left: 4px solid #60a5fa; padding: 16px 20px; margin: 30px 0; border-radius: 0 8px 8px 0;">
               <h4 style="margin: 0 0 8px 0; color: #1e1030; font-size: 15px;">🤝 Program Afiliasi</h4>
               <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #475569;">
                 Dapatkan komisi hingga <strong>30%</strong> dengan menjadi affiliator NorraClip. Tertarik? Cukup balas email ini dan tim kami akan memberikan detailnya.
